@@ -1,0 +1,65 @@
+{
+  "seed": 42,
+  "device": "mps",
+  "split": {
+    "train": 140,
+    "validation": 30,
+    "test": 30,
+    "train_positive": 67,
+    "validation_positive": 18,
+    "test_positive": 19
+  },
+  "normalization": {
+    "mean": 0.9921022768531527,
+    "std": 0.05817416134264816
+  },
+  "best_epoch": 93,
+  "best_validation_loss": 0.03405415415763855,
+  "baseline_logistic_regression": {
+    "train": {
+      "accuracy": 0.9857142857142858,
+      "precision": 1.0,
+      "recall": 0.9701492537313433,
+      "f1": 0.9848484848484849,
+      "roc_auc": 1.0
+    },
+    "validation": {
+      "accuracy": 0.5666666666666667,
+      "precision": 0.6923076923076923,
+      "recall": 0.5,
+      "f1": 0.5806451612903226,
+      "roc_auc": 0.6296296296296295
+    },
+    "test": {
+      "accuracy": 0.6333333333333333,
+      "precision": 0.75,
+      "recall": 0.631578947368421,
+      "f1": 0.6857142857142857,
+      "roc_auc": 0.6315789473684211
+    }
+  },
+  "cnn": {
+    "train": {
+      "accuracy": 0.9857142857142858,
+      "precision": 1.0,
+      "recall": 0.9701492537313433,
+      "f1": 0.9848484848484849,
+      "roc_auc": 1.0
+    },
+    "validation": {
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "roc_auc": 1.0
+    },
+    "test": {
+      "accuracy": 0.9333333333333333,
+      "precision": 1.0,
+      "recall": 0.8947368421052632,
+      "f1": 0.9444444444444444,
+      "roc_auc": 0.985645933014354
+    }
+  },
+  "epochs_ran": 100
+}
