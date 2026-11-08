@@ -4,11 +4,13 @@
 
 This project is a supervised binary image-classification task. Its input is a 400 by 400 PNG containing a coloured closed curve and labels A, B, and C. Its output is one of two classes: `+` when the labels follow clockwise order `A → B → C`, and `-` when they follow `A → C → B`.
 
+The training convention is explicit: `ABC` maps to target `1` and `ACB` maps to target `0`. This convention is stored in `labels.py`. It defines the correct answer for each labelled training image, but it is not a hand-written image-reading rule. The CNN must learn the visual relationship between pixels and those targets.
+
 The practical purpose is to build a prediction system that learns a visual spatial-order rule from labelled examples. The final system accepts a previously unseen image and returns a class plus a confidence score. It does not use a hand-written geometric rule at inference time.
 
 ## 2 Dataset Description
 
-The teacher supplied 200 labelled PNG images in `figures/`. The numeric prefix is only an identifier. The filename suffix provides the supervised target: `_+.png` is class `+` and `_-.png` is class `-`.
+The teacher supplied 200 labelled PNG images in `figures/`. The numeric prefix is only an identifier. The filename suffix provides the supervised target: `_+.png` is class `+`, target `1`, and clockwise order `ABC`; `_-.png` is class `-`, target `0`, and clockwise order `ACB`.
 
 | Item | Value |
 |---|---:|
@@ -40,7 +42,7 @@ The split happens before normalization statistics are calculated. Therefore, no 
 
 Two models are compared.
 
-1. **Baseline: Logistic Regression.** It receives a flattened 64 × 64 greyscale image. This establishes how well a linear classifier can use raw pixels without convolutional spatial features.
+1. **Baseline: Logistic Regression.** It receives a flattened 64 × 64 grayscale image. This establishes how well a linear classifier can use raw pixels without convolutional spatial features.
 2. **Main model: ClockwiseCNN.** It receives one 128 × 128 greyscale channel and contains three convolution blocks:
    - Conv2D 1→16, 3 × 3 kernel, BatchNorm, ReLU, MaxPool 2 × 2
    - Conv2D 16→32, 3 × 3 kernel, BatchNorm, ReLU, MaxPool 2 × 2
@@ -54,7 +56,7 @@ The output is one logit, so the loss is `BCEWithLogitsLoss`. It combines sigmoid
 
 ## 5 Experimental Design and Training Process
 
-The experiment ran with Python 3.11.15, PyTorch 2.15.0, torchvision 0.29.2, scikit-learn 1.9.1, and the PyTorch MPS device backend. The random seed 42 controls augmentation and DataLoader order only; it does not change membership of any split. At every epoch, the script records training loss, validation loss, training F1, and validation F1. The selected checkpoint was saved at epoch 93 with validation loss 0.0341. The trained checkpoint, `metrics.json`, a loss/F1 curve, and a test confusion matrix are saved under `artifacts/`.
+The experiment ran with Python 3.11.15, PyTorch 2.15.0, torchvision 0.29.2, scikit-learn 1.9.1, and the PyTorch MPS device backend. The random seed 42 controls augmentation and DataLoader order only; it does not change membership of any split. At every epoch, the script records training loss, validation loss, training F1, and validation F1. The selected checkpoint was saved at epoch 93 with validation loss 0.0341. Each training run saves a named checkpoint, metrics JSON file, loss/F1 curve, and test confusion matrix under `artifacts/`.
 
 Metrics are accuracy, precision, recall, F1-score, ROC-AUC, and a confusion matrix. F1 is included alongside accuracy even though the classes are nearly balanced.
 
@@ -82,12 +84,15 @@ The two test errors are `177_+.png` and `192_+.png`, both positive images predic
 
 ## 7 Prediction System
 
-The trained model is saved as `artifacts/clockwise_cnn.pt`. `inference.py` is independent from training: it loads the checkpoint, reads the saved normalization mean and standard deviation, applies the same greyscale preprocessing, runs the CNN, and prints the predicted label with the probability of `+`.
+The program gateway, `program.py`, first asks the user to choose either testing or training. In the testing sequence it lists the `.pt` checkpoints in the fixed `artifacts/` directory, asks the user to choose one model, then displays the saved held-out test metrics: accuracy, precision, recall, F1-score, and ROC-AUC. It next lists the PNG images in the fixed `testing/` directory for a second numbered selection. The user does not type an image path, and the menu hides filename labels before selection because the filename suffix contains the true class. The response shows the prediction, confidence, expected label, and whether that individual prediction is correct. In the training sequence it asks for a new model name and saves the result as `artifacts/<model-name>.pt`; it then exits so the user can run the gateway again and choose that model. `inference.py` performs the actual prediction: it loads the selected checkpoint, reads the saved normalization mean and standard deviation, applies the same grayscale preprocessing, runs the CNN, and prints the predicted label with the probability of `+`.
 
 Example commands:
 
 ```bash
-python train.py --training-dir training --validation-dir validation --testing-dir testing --output-dir artifacts
+python program.py
+
+# Optional direct commands
+python train.py --training-dir training --validation-dir validation --testing-dir testing --output-dir artifacts --model-name clockwise_cnn
 python inference.py testing/170_+.png --checkpoint artifacts/clockwise_cnn.pt
 ```
 
@@ -113,7 +118,9 @@ This project built a supervised prediction system for clockwise-order image clas
 
 ## 11 Appendix
 
+- `labels.py`: the shared `ABC → + → 1` and `ACB → - → 0` target convention.
 - `model.py`: the CNN architecture.
 - `train.py`: split, preprocessing, baseline, CNN training, evaluation, checkpointing, and figures.
-- `inference.py`: standalone image prediction.
+- `program.py`: the interactive gateway for model selection, training, and testing.
+- `inference.py`: standalone image prediction used by the gateway.
 - `requirements.txt`: required Python packages.

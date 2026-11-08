@@ -1,12 +1,16 @@
-"""Neural-network architecture used by training and inference."""
+"""Neural-network architecture shared by training and inference."""
 
 from __future__ import annotations
 
 from torch import Tensor, nn
 
-
 class ClockwiseCNN(nn.Module):
-    """A compact grayscale CNN for the binary clockwise-order classification task."""
+    """Classify a grayscale figure as clockwise ABC (`+`) or ACB (`-`).
+
+    The model returns one logit per image. A positive logit supports the `+`
+    class, and a negative logit supports the `-` class. The sigmoid conversion
+    to probability happens in training evaluation and inference, not here.
+    """
 
     def __init__(self) -> None:
         super().__init__()
@@ -22,7 +26,7 @@ class ClockwiseCNN(nn.Module):
             nn.Conv2d(32, 64, kernel_size=3, padding=1),
             nn.BatchNorm2d(64),
             nn.ReLU(),
-            # Retain a 4x4 spatial grid because clockwise order is positional.
+            # Keep coarse location information because clockwise order is positional.
             nn.AdaptiveAvgPool2d((4, 4)),
         )
         self.classifier = nn.Sequential(

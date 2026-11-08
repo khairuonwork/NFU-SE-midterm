@@ -1,36 +1,51 @@
-# Penjelasan arsitektur ClockwiseCNN
+# ClockwiseCNN Architecture Explained
 
-## Tujuan model
+## What the model learns
 
-`ClockwiseCNN` adalah model klasifikasi biner untuk membaca urutan label A, B, dan C pada gambar kurva berwarna. Kelas `+` berarti urutan clockwise adalah `ABC`, sedangkan kelas `-` berarti `ACB`.
+`ClockwiseCNN` is a binary image classifier. It learns to distinguish two clockwise label orders:
 
-Model tidak menerima aturan clockwise dalam bentuk rumus. Model menerima pixel gambar dan mempelajari pola visual yang berhubungan dengan posisi label, bentuk kurva, dan hubungan spasial di antaranya.
+| Clockwise order | Symbol | Binary target |
+|---|---:|---:|
+| `A → B → C` | `+` | `1` |
+| `A → C → B` | `-` | `0` |
 
-## Dari file gambar ke tensor
+The mapping is explicit in [labels.py](labels.py):
 
-Setiap file PNG asli berukuran 400 × 400 pixel. Sebelum masuk ke CNN, `train.py` melakukan langkah berikut.
-
-1. Gambar diubah menjadi greyscale. Warna kurva tidak dipakai sebagai fitur utama karena warna berubah antar gambar, sedangkan kelas ditentukan oleh urutan label.
-2. Gambar di-resize menjadi 128 × 128 pixel.
-3. Nilai pixel diubah dari rentang 0 sampai 255 menjadi tensor dengan rentang 0 sampai 1.
-4. Tensor dinormalisasi menggunakan mean dan standard deviation yang dihitung dari folder `training/` saja.
-
-Saat training, gambar juga dapat diputar maksimal 8 derajat, digeser maksimal 4 persen, dan di-scale dari 0.95 sampai 1.05. Horizontal dan vertical flip tidak dipakai karena refleksi akan membalik clockwise menjadi counter-clockwise dan dapat mengubah label yang seharusnya.
-
-Setelah preprocessing, satu batch masuk ke model dengan bentuk:
-
-```text
-[batch_size, channel, height, width]
-[B, 1, 128, 128]
+```python
+CLOCKWISE_ORDER_TO_CLASS_ID = {
+    "ABC": 1,
+    "ACB": 0,
+}
 ```
 
-`B` adalah jumlah gambar dalam satu batch. Nilai default-nya adalah 16.
+This code defines the answer used while training. It does not manually solve an image by tracing the curve. The CNN receives grayscale pixels and learns the visual evidence for each target from the examples in `training/`.
 
-## Apa yang dilakukan __init__
+## From PNG file to tensor
 
-Bagian `__init__` membangun daftar layer dan parameter yang akan dipelajari. Pada tahap ini gambar belum diproses. PyTorch hanya mendaftarkan convolution kernel, parameter BatchNorm, bobot Linear, dan bias ke dalam objek `ClockwiseCNN`.
+Each source PNG is 400 × 400 pixels. Before the image enters the CNN, `train.py` performs these steps:
 
-Pemrosesan gambar baru terjadi saat `forward(images)` dipanggil. `forward` mengirim tensor gambar melalui `self.features`, lalu `self.classifier`.
+1. Convert the image to grayscale. The curve colour changes between images, but colour does not define the class.
+2. During training only, apply a small affine transformation: rotation up to 8 degrees, translation up to 4 percent, and scaling from 0.95 to 1.05.
+3. Resize the image to 128 × 128 pixels.
+4. Convert pixel values from 0 through 255 into a tensor from 0 through 1.
+5. Normalize the tensor with mean and standard deviation calculated from `training/` only.
+
+Horizontal and vertical flips are intentionally excluded. A reflection reverses clockwise order, so it can change the correct class.
+
+After preprocessing, one batch has this shape:
+
+```text
+[batch size, channels, height, width]
+[B,          1,        128,    128]
+```
+
+`B` is the number of images in the batch. The default batch size is 16.
+
+## What `__init__` does
+
+`__init__` builds the layers and creates their learnable parameters. At this stage, no image has moved through the network. PyTorch registers convolution kernels, BatchNorm parameters, linear weights, and biases inside the `ClockwiseCNN` object.
+
+Image processing starts only when `forward(images)` is called:
 
 ```text
 images
@@ -42,101 +57,101 @@ self.features
 self.classifier
   │
   ▼
-logit tunggal
+one logit per image
 ```
 
-Model memiliki 154,849 parameter yang dapat dipelajari. Parameter ini diperbarui oleh AdamW melalui backpropagation saat training.
+The model has 154,849 trainable parameters. AdamW updates those parameters through backpropagation during training.
 
-## Bagian self.features
+## Feature extractor: `self.features`
 
-`self.features` adalah extractor fitur. Tugasnya mengubah pixel mentah menjadi representasi yang lebih berguna untuk membaca hubungan spasial.
+`self.features` turns raw pixels into spatial features. Early layers detect small visual details. Later layers combine those details into higher-level positional patterns.
 
-| Tahap | Layer | Bentuk output | Peran pada gambar |
+| Stage | Layer | Output shape | What it can represent |
 |---|---|---:|---|
-| Input | Greyscale image | `[B, 1, 128, 128]` | Satu channel berisi struktur kurva, lingkaran, dan huruf. |
-| Block 1 | Conv2d 1→16, BatchNorm, ReLU | `[B, 16, 128, 128]` | Mencari fitur kecil seperti tepi garis kurva, outline lingkaran label, dan stroke huruf. |
-| Block 1 | MaxPool2d(2) | `[B, 16, 64, 64]` | Mengurangi resolusi setengah sambil mempertahankan fitur terkuat di tiap area 2 × 2. |
-| Block 2 | Conv2d 16→32, BatchNorm, ReLU | `[B, 32, 64, 64]` | Menggabungkan fitur kecil menjadi pola lokal, misalnya bagian label yang dekat dengan bagian tertentu dari kurva. |
-| Block 2 | MaxPool2d(2) | `[B, 32, 32, 32]` | Mengurangi resolusi lagi agar layer berikutnya melihat area gambar yang lebih luas. |
-| Block 3 | Conv2d 32→64, BatchNorm, ReLU | `[B, 64, 32, 32]` | Membentuk fitur tingkat lebih tinggi tentang hubungan posisi antarlokasi pada gambar. |
-| Spatial pooling | AdaptiveAvgPool2d((4, 4)) | `[B, 64, 4, 4]` | Merangkum gambar menjadi grid 4 × 4 sambil mempertahankan informasi kasar tentang posisi kiri, kanan, atas, dan bawah. |
+| Input | Grayscale image | `[B, 1, 128, 128]` | The curve, label circles, and letter strokes. |
+| Block 1 | Conv2d 1→16, BatchNorm, ReLU | `[B, 16, 128, 128]` | Small edges, curved line segments, circle outlines, and letter strokes. |
+| Block 1 | MaxPool2d(2) | `[B, 16, 64, 64]` | The strongest feature in each 2 × 2 area. |
+| Block 2 | Conv2d 16→32, BatchNorm, ReLU | `[B, 32, 64, 64]` | Local combinations of labels and nearby curve segments. |
+| Block 2 | MaxPool2d(2) | `[B, 32, 32, 32]` | A more compact view with a larger receptive field. |
+| Block 3 | Conv2d 32→64, BatchNorm, ReLU | `[B, 64, 32, 32]` | Higher-level spatial relationships between areas of the figure. |
+| Spatial pooling | AdaptiveAvgPool2d((4, 4)) | `[B, 64, 4, 4]` | A compact grid that retains coarse position. |
 
-### Conv2d
+### Convolution
 
-Semua convolution memakai kernel 3 × 3 dan `padding=1`. Karena padding ini, convolution tidak langsung mengubah tinggi dan lebar feature map. Contohnya, input `[B, 1, 128, 128]` menjadi `[B, 16, 128, 128]` setelah convolution pertama.
+Each convolution uses a 3 × 3 kernel with `padding=1`. Padding preserves the height and width of a feature map during convolution. For example, the first convolution changes `[B, 1, 128, 128]` into `[B, 16, 128, 128]`.
 
-Setiap kernel bergerak di seluruh gambar. Kernel pertama dapat belajar mendeteksi garis lengkung atau stroke hitam pada huruf. Layer berikutnya menerima banyak feature map dari layer sebelumnya, jadi ia dapat belajar pola yang lebih kompleks daripada garis tunggal.
+The first kernels can learn simple structures such as a black letter stroke or a curved line. Later layers receive several feature maps at once, so they can combine simple structures into more meaningful local relationships.
 
-Jumlah channel meningkat dari 1 menjadi 16, 32, lalu 64. Ini memberi model lebih banyak jenis fitur untuk direpresentasikan saat informasi visual menjadi lebih kompleks.
+The channel count increases from 1 to 16, then 32, then 64. This gives the network more distinct feature types as visual information becomes more complex.
 
-### BatchNorm2d
+### Batch normalization
 
-`BatchNorm2d` menormalkan nilai feature map untuk setiap channel selama training. Nilai aktivasi menjadi lebih stabil, sehingga optimizer lebih mudah memperbarui bobot tanpa terlalu sensitif terhadap skala aktivasi dari layer sebelumnya.
+`BatchNorm2d` normalizes activations for each channel during training. This keeps feature scales more stable and makes it easier for the optimizer to update weights.
 
 ### ReLU
 
-`ReLU()` mengubah nilai negatif menjadi nol dan membiarkan nilai positif lewat. Tanpa aktivasi non-linear, beberapa convolution dan Linear layer hanya setara dengan satu transformasi linear besar. ReLU membuat model dapat mempelajari pola visual yang tidak linear.
+`ReLU()` replaces negative values with zero and keeps positive values. Without nonlinear activations, a stack of convolution and linear layers would behave like one large linear transformation. ReLU lets the network learn nonlinear visual patterns.
 
-### MaxPool2d
+### Max pooling
 
-`MaxPool2d(2)` mengambil nilai terbesar pada setiap area 2 × 2. Ukuran feature map menjadi setengah, dari 128 × 128 ke 64 × 64, lalu ke 32 × 32. Ini membuat receptive field layer berikutnya mencakup area gambar yang lebih luas dan mengurangi jumlah komputasi.
+`MaxPool2d(2)` keeps the largest value in each 2 × 2 region. It reduces spatial resolution from 128 × 128 to 64 × 64, then to 32 × 32. The next layer can then use information from a wider part of the original image with less computation.
 
-### AdaptiveAvgPool2d((4, 4))
+### Why the 4 × 4 grid matters
 
-Layer ini mengubah setiap feature map berukuran 32 × 32 menjadi 4 × 4. Berbeda dari global average pooling 1 × 1, grid 4 × 4 masih menyimpan lokasi kasar fitur.
+`AdaptiveAvgPool2d((4, 4))` changes every 32 × 32 feature map into a 4 × 4 grid. This preserves coarse locations such as upper-left, lower-right, and the areas between them.
 
-Hal ini penting untuk tugas ini. Jika model hanya menyimpan satu rata-rata untuk seluruh gambar, model dapat mengetahui bahwa ada kurva dan ada tiga label, tetapi kehilangan petunjuk apakah B muncul sebelum atau sesudah C saat mengelilingi gambar. Dengan grid 4 × 4, classifier masih dapat membedakan bukti fitur yang muncul di bagian gambar yang berbeda.
+That location information is important. A global average pool with output size 1 × 1 would tell the classifier that the image contains a curve and three labels, but it would discard much of the evidence about where B and C occur relative to A. The 4 × 4 grid lets the classifier compare evidence from different parts of the figure.
 
-## Bagian self.classifier
+## Classifier: `self.classifier`
 
-Output dari `self.features` memiliki bentuk `[B, 64, 4, 4]`. Bagian classifier mengubahnya menjadi satu nilai untuk setiap gambar.
+The feature extractor produces `[B, 64, 4, 4]`. The classifier converts that representation into one number per image.
 
-| Layer | Bentuk output | Fungsi |
+| Layer | Output shape | Purpose |
 |---|---:|---|
-| `Flatten()` | `[B, 1024]` | Mengubah 64 × 4 × 4 fitur menjadi satu vektor. |
-| `Linear(1024, 128)` | `[B, 128]` | Menggabungkan fitur dari berbagai area grid untuk mencari bukti urutan `ABC` atau `ACB`. |
-| `ReLU()` | `[B, 128]` | Memberikan non-linearitas pada kombinasi fitur. |
-| `Dropout(0.4)` | `[B, 128]` saat training | Menonaktifkan sekitar 40 persen aktivasi secara acak saat training untuk mengurangi ketergantungan pada fitur tertentu. Saat validation dan inference, Dropout dimatikan. |
-| `Linear(128, 1)` | `[B, 1]` | Menghasilkan satu logit untuk klasifikasi biner. |
+| `Flatten()` | `[B, 1024]` | Converts 64 × 4 × 4 features into one vector. |
+| `Linear(1024, 128)` | `[B, 128]` | Combines features from different areas of the 4 × 4 grid. |
+| `ReLU()` | `[B, 128]` | Adds a nonlinear decision step. |
+| `Dropout(0.4)` | `[B, 128]` during training | Randomly disables about 40 percent of activations to reduce dependence on individual features. It is inactive during validation and inference. |
+| `Linear(128, 1)` | `[B, 1]` | Produces one logit for binary classification. |
 
-`Flatten()` menghasilkan 1024 nilai karena `64 × 4 × 4 = 1024`. Linear pertama tidak melihat pixel mentah lagi. Ia melihat fitur hasil convolution beserta lokasi kasarnya.
+`Flatten()` produces 1024 values because `64 × 4 × 4 = 1024`. The first linear layer does not see raw pixels. It sees CNN features and their coarse locations.
 
-## Logit, probability, dan label akhir
+## Logit, probability, and final class
 
-Layer terakhir menghasilkan logit, bukan probability.
+The final layer produces a logit, not a probability:
 
 ```text
-logit < 0   cenderung kelas -
-logit = 0   probability + = 0.5
-logit > 0   cenderung kelas +
+logit < 0  supports class -
+logit = 0  gives probability(+) = 0.5
+logit > 0  supports class +
 ```
 
-Saat training, `BCEWithLogitsLoss` menerima logit langsung dan membandingkannya dengan label target, yaitu 1 untuk `+` dan 0 untuk `-`. Loss ini sudah menghitung sigmoid secara stabil, sehingga model tidak memakai `Sigmoid()` sebagai layer eksplisit di `model.py`.
+During training, `BCEWithLogitsLoss` receives that logit and compares it with the target `1` for `+` or `0` for `-`. The loss combines sigmoid and binary cross-entropy in a numerically stable operation. For that reason, `model.py` does not contain an explicit `Sigmoid()` layer.
 
-Saat inference, `inference.py` menghitung sigmoid dari logit:
+During inference, `inference.py` converts the logit into the probability of class `+`:
 
 ```python
-positive_probability = torch.sigmoid(model(batch).squeeze()).item()
+positive_probability = torch.sigmoid(logit).item()
 ```
 
-Jika probability `+` minimal 0.5, prediksi adalah `+ (clockwise ABC)`. Jika kurang dari 0.5, prediksi adalah `- (clockwise ACB)`. Confidence untuk kelas `-` dihitung sebagai `1 - positive_probability`.
+If the probability is at least 0.5, the prediction is `+ (clockwise ABC)`. Otherwise, the prediction is `- (clockwise ACB)`. Confidence for the negative class is `1 - positive_probability`.
 
-## Ringkasan aliran satu gambar
+## One-image flow
 
 ```text
-PNG 400 × 400
-  → greyscale
-  → resize 128 × 128
+PNG, 400 × 400
+  → grayscale
+  → resize to 128 × 128
   → normalize
-  → Conv 1→16 + BatchNorm + ReLU + MaxPool
-  → Conv 16→32 + BatchNorm + ReLU + MaxPool
-  → Conv 32→64 + BatchNorm + ReLU
-  → adaptive average pooling ke grid 4 × 4
-  → flatten 1024 fitur
-  → Linear 1024→128 + ReLU + Dropout
+  → Conv 1→16, BatchNorm, ReLU, MaxPool
+  → Conv 16→32, BatchNorm, ReLU, MaxPool
+  → Conv 32→64, BatchNorm, ReLU
+  → adaptive average pooling to 4 × 4
+  → flatten 1024 values
+  → Linear 1024→128, ReLU, Dropout
   → Linear 128→1 logit
   → sigmoid
-  → probability dan kelas + atau -
+  → probability and predicted class
 ```
 
-Arsitektur ini cukup kecil untuk dataset 140 gambar training, tetapi tetap memiliki informasi posisi yang dibutuhkan untuk tugas clockwise-order. Hasil test tetap perlu dibaca bersama confusion matrix dan contoh error, terutama ketika B dan C berada sangat dekat.
+The architecture is compact enough for 140 training images while preserving spatial information needed for clockwise-order classification. The final result should still be interpreted with the held-out test metrics and the confusion matrix, especially when B and C are close together.
