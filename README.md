@@ -1,3 +1,6 @@
+# 李凱 / Daffa Khairul Ammar - F1151035
+# SE Midterm
+
 # Clockwise Order Classifier
 
 This project trains a neural network to classify a figure from the clockwise order of its labels. It predicts one of two classes:
