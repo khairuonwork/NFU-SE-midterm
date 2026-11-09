@@ -264,7 +264,7 @@ def train_one_epoch(
         optimizer.zero_grad()
         logits = model(images).squeeze(1)
         loss = loss_function(logits, labels)
-        loss.backward()
+        loss.backward() #Backpropagation
         optimizer.step()
 
 

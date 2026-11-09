@@ -5,6 +5,8 @@
 
 This project trains a neural network to classify a figure from the clockwise order of its labels. It predicts one of two classes:
 
+> **Appendix reference.** The complete, labelled source code is maintained in the [GitHub repository](https://github.com/khairuonwork/NFU-SE-midterm). This README is the project's user manual: it explains how to install the dependencies, train a model, reproduce the model comparison, and run the prediction system.
+
 | Clockwise order | Class symbol | Binary target |
 |---|---:|---:|
 | `A → B → C` | `+` | `1` |
@@ -44,7 +46,9 @@ The dataset has fixed splits. The program does not randomly split images.
 
 The training script also checks SHA-256 hashes and stops if the same image content appears in more than one split.
 
-## Install dependencies
+## User manual
+
+### 1. Install dependencies
 
 ```bash
 python3 -m venv .venv
@@ -52,7 +56,9 @@ source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
-## Use the interactive program
+### 2. Train a model
+
+The interactive menu is the normal workflow for training and testing:
 
 ```bash
 python program.py
@@ -65,9 +71,7 @@ The menu offers two actions:
 
 The test-image menu hides dataset filenames before selection because filename suffixes contain the true class label.
 
-## Train from the command line
-
-The interactive menu is the normal workflow. You can also run training directly:
+You can also train directly from the command line:
 
 ```bash
 python train.py \
@@ -92,7 +96,19 @@ For the selected CNN checkpoint, the program saves these files under `artifacts/
 <model-name>_test_confusion_matrix.png
 ```
 
-## Run inference on another image
+### 3. Recalculate the model comparison
+
+Run the comparison script after training to generate a fresh metric table for Logistic Regression and a selected CNN checkpoint:
+
+```bash
+python classification_metrics.py --checkpoint artifacts/clockwise_cnn.pt
+```
+
+The script fits Logistic Regression using `training/` only, loads the specified CNN checkpoint without updating its weights, evaluates both models on all three fixed splits, prints the comparison table, and saves a JSON report beside the checkpoint. Logistic Regression is a baseline for measuring the value of CNN spatial features. The prediction system continues to use only the saved CNN checkpoint.
+
+### 4. Launch the prediction system
+
+For the guided interface, use `python program.py` and select **Test image**. For a direct prediction on a specified image, run:
 
 ```bash
 python inference.py path/to/figure.png --checkpoint artifacts/clockwise_cnn.pt
@@ -100,14 +116,18 @@ python inference.py path/to/figure.png --checkpoint artifacts/clockwise_cnn.pt
 
 The inference script restores the model checkpoint and its saved preprocessing values. It reports the predicted class, confidence for that class, and the probability of class `+`.
 
-## Project files
+## Appendix: source-code guide
+
+Do not paste every source file into the report. The complete code is available in the [GitHub repository](https://github.com/khairuonwork/NFU-SE-midterm), while this README provides the user manual required by the Appendix. The table below separates the training, evaluation, and inference components so a reader can locate each part quickly.
 
 | File | Responsibility |
 |---|---|
 | [labels.py](labels.py) | Defines the `ABC → + → 1` and `ACB → - → 0` training convention. |
 | [model.py](model.py) | Defines the `ClockwiseCNN` architecture. |
 | [train.py](train.py) | Loads fixed splits, trains models, evaluates them, and saves artifacts. |
+| [classification_metrics.py](classification_metrics.py) | Recalculates reproducible split metrics for the baseline and one CNN checkpoint. |
 | [inference.py](inference.py) | Loads one CNN checkpoint and predicts one image. |
 | [program.py](program.py) | Provides the interactive training and testing menu. |
 | [explained_architecture.md](explained_architecture.md) | Explains how image pixels move through the CNN. |
-| [answer.md](answer.md) | Contains the report requested by the project guideline. |
+
+Training records and additional figures are saved in `artifacts/` after training. These include the selected checkpoint, JSON metrics, training curves, and the test confusion matrix.
